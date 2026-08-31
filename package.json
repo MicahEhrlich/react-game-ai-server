@@ -8,16 +8,20 @@
     "start": "node --experimental-strip-types src/server.ts",
     "build": "tsc -p tsconfig.json --noEmit",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "node --experimental-strip-types --test test/*.test.ts"
+    "test": "node --experimental-strip-types --test test/*.test.ts",
+    "db:migrate": "node --experimental-strip-types src/migrate.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.120.0",
     "@fastify/cors": "^11.1.0",
     "fastify": "^5.6.2",
+    "pg": "^8.23.0",
+    "redis": "^6.2.1",
     "vite": "^8.2.0"
   },
   "devDependencies": {
     "@types/node": "^24.13.3",
+    "@types/pg": "^8.23.1",
     "typescript": "~6.0.2"
   }
 }

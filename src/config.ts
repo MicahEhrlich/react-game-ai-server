@@ -4,6 +4,9 @@ export interface ServerConfig {
   readonly port: number
   readonly allowedOrigins: readonly string[]
   readonly scoresFile: string
+  readonly databaseUrl?: string
+  readonly redisUrl?: string
+  readonly nodeEnv: string
 }
 
 function splitOrigins(raw: string | undefined): readonly string[] {
@@ -21,5 +24,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
     port: Number.isFinite(port) && port > 0 ? port : 8787,
     allowedOrigins: splitOrigins(env.CORS_ORIGINS),
     scoresFile: env.SCORES_FILE ?? './data/scores.json',
+    databaseUrl: env.DATABASE_URL,
+    redisUrl: env.REDIS_URL,
+    nodeEnv: env.NODE_ENV ?? 'development',
   }
 }

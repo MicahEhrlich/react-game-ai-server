@@ -1,0 +1,34 @@
+services:
+  - type: web
+    name: react-game-ai-server
+    runtime: node
+    rootDir: .
+    plan: starter
+    buildCommand: npm ci && npm run typecheck && npm run db:migrate
+    startCommand: npm run start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: CORS_ORIGINS
+        sync: false
+      - key: DATABASE_URL
+        fromDatabase:
+          name: react-game-ai-db
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: react-game-ai-redis
+          property: connectionString
+
+databases:
+  - name: react-game-ai-db
+    plan: starter
+
+redis:
+  - name: react-game-ai-redis
+    plan: starter
+    maxmemoryPolicy: allkeys-lru

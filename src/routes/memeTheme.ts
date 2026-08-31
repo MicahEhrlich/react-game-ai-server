@@ -1,5 +1,5 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
-import { makeMemeThemeHandler } from '../../../react-game-ai/server/memeThemeEndpoint.ts'
+import { makeMemeThemeHandler } from '../../server/memeThemeEndpoint.ts'
 import { quiet, rateLimit, RATE_LIMITS } from '../rateLimit.ts'
 import { runConnectHandler } from '../nodeHandler.ts'
 
@@ -9,7 +9,7 @@ function isAdultBody(body: unknown): boolean {
 
 export function memeThemeRoute(apiKey: string | undefined) {
   const handler = makeMemeThemeHandler(apiKey)
-  return (req: IncomingMessage, res: ServerResponse, body?: unknown): void => {
+  return async (req: IncomingMessage, res: ServerResponse, body?: unknown): Promise<void> => {
     if (req.method !== 'GET' && req.method !== 'POST') {
       res.statusCode = 404
       res.end()
@@ -23,7 +23,7 @@ export function memeThemeRoute(apiKey: string | undefined) {
       quiet(res)
       return
     }
-    if (!rateLimit(req, res, 'meme-theme', RATE_LIMITS.memeTheme)) return
+    if (!(await rateLimit(req, res, 'meme-theme', RATE_LIMITS.memeTheme, true))) return
     runConnectHandler(handler, req, res, body)
   }
 }

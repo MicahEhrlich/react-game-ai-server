@@ -40,6 +40,7 @@ test('score routes get and post scores', async () => {
     port: 0,
     allowedOrigins: [],
     scoresFile: join(dir, 'scores.json'),
+    nodeEnv: 'test',
   })
   const empty = await app.inject({ method: 'GET', url: '/api/scores?limit=5' })
   assert.equal(empty.statusCode, 200)

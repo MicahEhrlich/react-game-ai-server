@@ -1,13 +1,19 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
 import type { FastifyInstance } from 'fastify'
-import { allowRequest, RATE_LIMITS } from '../rateLimit.ts'
+import type { PgPool } from '../db.ts'
+import { allowRequestAsync, RATE_LIMITS } from '../rateLimit.ts'
 
 export interface ScoreEntry {
   readonly name: string
   readonly score: number
   readonly shifts: number
   readonly at: number
+}
+
+interface ScoreStore {
+  top(limit: number): Promise<ScoreEntry[]>
+  submit(entry: ScoreEntry): Promise<ScoreEntry[]>
 }
 
 const MAX_STORED = 100
@@ -48,7 +54,16 @@ function sortScores(entries: readonly ScoreEntry[]): ScoreEntry[] {
     .slice(0, MAX_STORED)
 }
 
-export class FileScoreStore {
+function rowToEntry(row: { name: string; score: number; shifts: number; client_at: string | number | null; created_at: Date | string }): ScoreEntry {
+  return {
+    name: row.name,
+    score: Number(row.score),
+    shifts: Number(row.shifts),
+    at: row.client_at === null ? new Date(row.created_at).getTime() : Number(row.client_at),
+  }
+}
+
+export class FileScoreStore implements ScoreStore {
   private readonly file: string
 
   constructor(file: string) {
@@ -77,8 +92,39 @@ export class FileScoreStore {
   }
 }
 
-export function registerScoreRoutes(app: FastifyInstance, scoresFile: string): void {
-  const store = new FileScoreStore(scoresFile)
+export class PostgresScoreStore implements ScoreStore {
+  private readonly pool: PgPool
+
+  constructor(pool: PgPool) {
+    this.pool = pool
+  }
+
+  async top(limit: number): Promise<ScoreEntry[]> {
+    const result = await this.pool.query(
+      'select name, score, shifts, client_at, created_at from scores order by score desc, shifts desc, created_at asc limit $1',
+      [limit],
+    )
+    return result.rows.map(rowToEntry)
+  }
+
+  async submit(entry: ScoreEntry): Promise<ScoreEntry[]> {
+    await this.pool.query('insert into scores (name, score, shifts, client_at) values ($1, $2, $3, $4)', [
+      entry.name,
+      entry.score,
+      entry.shifts,
+      entry.at,
+    ])
+    await this.pool.query(`
+      delete from scores where id in (
+        select id from scores order by score desc, shifts desc, created_at asc offset $1
+      )
+    `, [MAX_STORED])
+    return this.top(10)
+  }
+}
+
+export function registerScoreRoutes(app: FastifyInstance, scoresFile: string, pool: PgPool | null): void {
+  const store: ScoreStore = pool ? new PostgresScoreStore(pool) : new FileScoreStore(scoresFile)
 
   app.get('/api/scores', async (req) => {
     const limit = normaliseLimit((req.query as { limit?: unknown }).limit)
@@ -87,8 +133,13 @@ export function registerScoreRoutes(app: FastifyInstance, scoresFile: string): v
 
   app.post('/api/scores', async (req, reply) => {
     const key = `scores:${ipFrom(req.headers, req.ip)}`
-    if (!allowRequest(key, RATE_LIMITS.scoreSubmit)) {
-      reply.code(429)
+    try {
+      if (!(await allowRequestAsync(key, RATE_LIMITS.scoreSubmit))) {
+        reply.code(429)
+        return { entries: await store.top(10), accepted: false }
+      }
+    } catch {
+      reply.code(503)
       return { entries: await store.top(10), accepted: false }
     }
     const entry = normaliseScoreEntry(req.body)

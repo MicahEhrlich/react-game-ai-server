@@ -12,13 +12,11 @@
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true,
     "skipLibCheck": true,
-    "rootDir": "..",
     "outDir": "dist"
   },
   "include": [
     "src/**/*.ts",
     "test/**/*.ts",
-    "../react-game-ai/server/directorEndpoint.ts",
-    "../react-game-ai/server/memeThemeEndpoint.ts"
+    "server/**/*.ts"
   ]
 }
