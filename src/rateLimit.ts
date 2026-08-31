@@ -16,6 +16,7 @@ export const RATE_LIMITS = {
   directorPlan: { windowMs: 10 * 60_000, max: 30 },
   directorEpitaph: { windowMs: 10 * 60_000, max: 10 },
   memeTheme: { windowMs: 24 * 60 * 60_000, max: 10 },
+  scoreSubmit: { windowMs: 10 * 60_000, max: 20 },
 } satisfies Record<string, RateLimitRule>
 
 function ipFrom(req: IncomingMessage): string {

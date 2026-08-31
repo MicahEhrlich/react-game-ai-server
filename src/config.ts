@@ -3,6 +3,7 @@ export interface ServerConfig {
   readonly host: string
   readonly port: number
   readonly allowedOrigins: readonly string[]
+  readonly scoresFile: string
 }
 
 function splitOrigins(raw: string | undefined): readonly string[] {
@@ -19,5 +20,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
     host: env.HOST ?? '0.0.0.0',
     port: Number.isFinite(port) && port > 0 ? port : 8787,
     allowedOrigins: splitOrigins(env.CORS_ORIGINS),
+    scoresFile: env.SCORES_FILE ?? './data/scores.json',
   }
 }

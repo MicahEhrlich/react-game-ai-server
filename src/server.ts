@@ -3,6 +3,7 @@ import cors from '@fastify/cors'
 import { loadConfig } from './config.ts'
 import { directorRoute } from './routes/director.ts'
 import { memeThemeRoute } from './routes/memeTheme.ts'
+import { registerScoreRoutes } from './routes/scores.ts'
 
 export async function buildServer(config = loadConfig()) {
   const app = Fastify({ logger: true, bodyLimit: 64 * 1024 })
@@ -18,6 +19,7 @@ export async function buildServer(config = loadConfig()) {
   const memeTheme = memeThemeRoute(config.anthropicApiKey)
 
   app.get('/health', async () => ({ ok: true }))
+  registerScoreRoutes(app, config.scoresFile)
   app.all('/api/director', (req, reply) => {
     reply.hijack()
     director(req.raw, reply.raw, req.body)
