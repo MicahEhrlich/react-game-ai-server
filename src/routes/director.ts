@@ -9,8 +9,9 @@ function directorKind(body: unknown): 'plan' | 'epitaph' {
     : 'plan'
 }
 
-export function directorRoute(apiKey: string | undefined) {
-  const handler = makeDirectorHandler(apiKey)
+type DirectorHandler = ReturnType<typeof makeDirectorHandler>
+
+export function directorRoute(apiKey: string | undefined, handler: DirectorHandler = makeDirectorHandler(apiKey)) {
   return async (req: IncomingMessage, res: ServerResponse, body?: unknown): Promise<void> => {
     if (req.method !== 'POST') {
       res.statusCode = 404

@@ -7,8 +7,9 @@ function isAdultBody(body: unknown): boolean {
   return typeof body === 'object' && body !== null && (body as { adultMode?: unknown }).adultMode === true
 }
 
-export function memeThemeRoute(apiKey: string | undefined) {
-  const handler = makeMemeThemeHandler(apiKey)
+type MemeThemeHandler = ReturnType<typeof makeMemeThemeHandler>
+
+export function memeThemeRoute(apiKey: string | undefined, handler: MemeThemeHandler = makeMemeThemeHandler(apiKey)) {
   return async (req: IncomingMessage, res: ServerResponse, body?: unknown): Promise<void> => {
     if (req.method !== 'GET' && req.method !== 'POST') {
       res.statusCode = 404
