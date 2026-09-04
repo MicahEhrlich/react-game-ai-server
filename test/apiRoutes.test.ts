@@ -44,8 +44,9 @@ test('health route returns ok', async () => {
 
 test('score routes reject malformed payloads and rate-limit submissions', async () => {
   resetRateLimitsForTests()
+  const dir = await mkdtemp(join(tmpdir(), 'score-api-rate-limit-'))
   const app = Fastify()
-  registerScoreRoutes(app, './data/test-scores.json', null)
+  registerScoreRoutes(app, join(dir, 'scores.json'), null)
 
   const bad = await app.inject({ method: 'POST', url: '/api/scores', payload: { name: '<x>', score: 1, shifts: 1 } })
   assert.equal(bad.statusCode, 400)
