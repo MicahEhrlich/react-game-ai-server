@@ -16,7 +16,12 @@ function bodyText(body: unknown): string {
 }
 
 function replayRequest(raw: IncomingMessage, body: unknown): Connect.IncomingMessage {
-  const replay = Readable.from(bodyText(body)) as Connect.IncomingMessage
+  // IncomingMessage emits request bodies as Buffer chunks unless a consumer
+  // explicitly calls setEncoding(). Readable.from(string), however, emits the
+  // string itself, which breaks handlers that collect chunks with
+  // Buffer.concat(). Replay one Buffer to preserve the IncomingMessage
+  // contract expected by the shared Vite/Connect handlers.
+  const replay = Readable.from([Buffer.from(bodyText(body), 'utf8')]) as Connect.IncomingMessage
   replay.method = raw.method
   replay.url = raw.url
   replay.headers = raw.headers as IncomingHttpHeaders

@@ -11,6 +11,7 @@ import { directorRoute } from '../src/routes/director.ts'
 import { memeThemeRoute } from '../src/routes/memeTheme.ts'
 import { registerScoreRoutes } from '../src/routes/scores.ts'
 import { RATE_LIMITS, resetRateLimitsForTests } from '../src/rateLimit.ts'
+import { runConnectHandler } from '../src/nodeHandler.ts'
 
 function jsonHandler(body: unknown): Connect.NextHandleFunction {
   return (_req: Connect.IncomingMessage, res: ServerResponse) => {
@@ -26,6 +27,32 @@ function quietHandler(): Connect.NextHandleFunction {
     res.end()
   }
 }
+
+test('Connect handler adapter replays parsed Fastify bodies as Buffer chunks', async () => {
+  const app = Fastify()
+  app.post('/replay', (req, reply) => {
+    reply.hijack()
+    runConnectHandler(
+      (replayed, res) => {
+        const chunks: Buffer[] = []
+        replayed.on('data', (chunk: Buffer) => chunks.push(chunk))
+        replayed.on('end', () => {
+          res.statusCode = 200
+          res.setHeader('content-type', 'application/json')
+          res.end(Buffer.concat(chunks))
+        })
+      },
+      req.raw,
+      reply.raw,
+      req.body,
+    )
+  })
+
+  const response = await app.inject({ method: 'POST', url: '/replay', payload: { kind: 'plan' } })
+  assert.equal(response.statusCode, 200)
+  assert.deepEqual(response.json(), { kind: 'plan' })
+  await app.close()
+})
 
 test('health route returns ok', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'server-health-'))
