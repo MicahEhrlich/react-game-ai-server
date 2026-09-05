@@ -113,7 +113,7 @@ const REVIEW_FORMAT = {
   },
 } as const
 
-const FORMAT = {
+export const MEME_THEME_FORMAT = {
   type: 'json_schema',
   name: 'meme_theme',
   schema: {
@@ -762,7 +762,7 @@ export function makeMemeThemeHandler(apiKey: string | undefined): Handler {
             ],
             output_config: {
               effort: 'low',
-              format: FORMAT,
+              format: MEME_THEME_FORMAT,
             },
           },
           { timeout: 8000, maxRetries: 1 },
@@ -781,7 +781,7 @@ export function makeMemeThemeHandler(apiKey: string | undefined): Handler {
 
         const parsed = JSON.parse(extractText(message)) as unknown
         const theme = normaliseMemeTheme(parsed, date, MEME_THEME_SOURCE.Live)
-        if (!theme?.themeRotations && !theme?.bundleThemes) {
+        if (!theme) {
           quiet()
           return
         }

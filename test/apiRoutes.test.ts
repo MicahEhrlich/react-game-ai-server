@@ -12,6 +12,7 @@ import { memeThemeRoute } from '../src/routes/memeTheme.ts'
 import { registerScoreRoutes } from '../src/routes/scores.ts'
 import { RATE_LIMITS, resetRateLimitsForTests } from '../src/rateLimit.ts'
 import { runConnectHandler } from '../src/nodeHandler.ts'
+import { MEME_THEME_FORMAT } from '../server/memeThemeEndpoint.ts'
 
 function jsonHandler(body: unknown): Connect.NextHandleFunction {
   return (_req: Connect.IncomingMessage, res: ServerResponse) => {
@@ -52,6 +53,16 @@ test('Connect handler adapter replays parsed Fastify bodies as Buffer chunks', a
   assert.equal(response.statusCode, 200)
   assert.deepEqual(response.json(), { kind: 'plan' })
   await app.close()
+})
+
+test('meme theme structured output allows every required themeCore property', () => {
+  const themeCore = MEME_THEME_FORMAT.schema.$defs.themeCore
+  for (const required of themeCore.required) {
+    assert.ok(
+      required in themeCore.properties,
+      `themeCore requires ${required} but does not define it in properties`,
+    )
+  }
 })
 
 test('health route returns ok', async () => {
