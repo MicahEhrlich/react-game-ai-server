@@ -26,6 +26,14 @@ Adult meme mode remains client-catalog-only for v1. Requests with `adultMode: tr
 
 ## Local Dev
 
+Create `.env.local` in this server directory with your server-only key:
+
+```dotenv
+ANTHROPIC_API_KEY=your-key-here
+```
+
+The dev, start, and migration commands load `.env.local` when present. Existing environment variables take precedence. Restart the server after changing the file.
+
 ```sh
 npm install
 npm run db:migrate
@@ -33,6 +41,10 @@ npm run dev
 ```
 
 The frontend proxies `/api` to `http://localhost:8787`.
+
+The game requests the next stage plan once the current stage has eight seconds remaining, using gameplay metrics collected so far. The three-second warning stays generic. At the transition, the game uses the available AI plan or its heuristic fallback without waiting; late responses cannot replace that choice. The final eight seconds are not included in the AI snapshot. Pausing freezes the stage countdown while an existing request may finish (subject to its 20-second wall-clock timeout).
+
+For `/api/director`, check the request method in the browser's Network panel: `OPTIONS` returning `204` is a normal CORS preflight. A `POST` returning `204` means no AI plan was supplied and the game uses its heuristic director. A successful AI response is `200` with JSON. Check the server terminal for a missing-key warning or `[director]` upstream failure logs when POST requests keep returning `204`.
 
 ## Render
 

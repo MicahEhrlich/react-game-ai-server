@@ -1,7 +1,7 @@
 import Fastify from 'fastify'
 import cors from '@fastify/cors'
 import { createPgPool, createRedis } from './db.ts'
-import { loadConfig } from './config.ts'
+import { isAllowedOrigin, loadConfig } from './config.ts'
 import { setRedisRateLimitClient } from './rateLimit.ts'
 import { directorRoute } from './routes/director.ts'
 import { memeThemeRoute } from './routes/memeTheme.ts'
@@ -13,6 +13,9 @@ export async function buildServer(config = loadConfig()) {
   setRedisRateLimitClient(redis)
 
   const app = Fastify({ logger: true, bodyLimit: 64 * 1024 })
+  if (!config.anthropicApiKey) {
+    app.log.warn('ANTHROPIC_API_KEY is missing; AI routes return 204 and the game uses local fallbacks. Set it in .env.local or the server environment.')
+  }
 
   app.addHook('onClose', async () => {
     setRedisRateLimitClient(null)
@@ -22,7 +25,7 @@ export async function buildServer(config = loadConfig()) {
 
   await app.register(cors, {
     origin(origin, cb) {
-      if (!origin || config.allowedOrigins.includes(origin)) cb(null, true)
+      if (isAllowedOrigin(origin, config.allowedOrigins)) cb(null, true)
       else cb(null, false)
     },
   })

@@ -9,8 +9,25 @@ export interface ServerConfig {
   readonly nodeEnv: string
 }
 
+export function isAllowedOrigin(origin: string | undefined, allowedOrigins: readonly string[]): boolean {
+  if (!origin) return true
+
+  return allowedOrigins.some((allowed) => {
+    if (allowed === origin) return true
+
+    if (allowed.includes('*')) {
+      const escaped = allowed
+        .replace(/[.+?^${}()|[\]\\]/g, '\\$&')
+        .replace(/\*/g, '.*')
+      return new RegExp(`^${escaped}$`, 'i').test(origin)
+    }
+
+    return false
+  })
+}
+
 function splitOrigins(raw: string | undefined): readonly string[] {
-  return (raw ?? 'http://localhost:5173,http://127.0.0.1:5173')
+  return (raw ?? 'http://localhost:5173,http://127.0.0.1:5173,https://*.onrender.com')
     .split(',')
     .map((origin) => origin.trim())
     .filter(Boolean)

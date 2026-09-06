@@ -22,10 +22,8 @@ import type {
  * cached plan or falls through to the heuristic. `decide` never awaits, never
  * throws, and never blocks a shift.
  *
- * The timing is what makes it work. `prime` is called the instant a stage
- * starts and `decide` runs 3s before that stage ends, so a request has the
- * whole stage -- 30 to 90 seconds -- to complete. Missing that window costs
- * nothing but a heuristic stage.
+ * prime() snapshots the current stage with eight seconds remaining. decide()
+ * runs at the transition and seals the available plan or heuristic fallback.
  *
  * This file has no fetch, no DOM and no import.meta: the transport is
  * injected, which is what lets scripts/validate-llm-director.ts drive the
@@ -83,6 +81,7 @@ interface PlanSlot {
   readonly runId: string
   readonly forShiftIndex: number
   readonly plan: StagePlan
+  readonly source: PlanSource
 }
 
 export class LlmDirector implements LiveDirector {
@@ -99,6 +98,7 @@ export class LlmDirector implements LiveDirector {
   // reset in beginRun() is one edit, never two (CLAUDE.md invariant 1).
   private runId = ''
   private slot: PlanSlot | null = null
+  private selected: PlanSlot | null = null
   private inFlight: AbortController | null = null
   private epitaphInFlight: AbortController | null = null
   private persona = 0
@@ -126,6 +126,7 @@ export class LlmDirector implements LiveDirector {
     this.epitaphInFlight?.abort()
     this.runId = runId
     this.slot = null
+    this.selected = null
     this.inFlight = null
     this.epitaphInFlight = null
     this.persona = Math.floor(this.random() * PERSONA_COUNT) % PERSONA_COUNT
@@ -134,7 +135,7 @@ export class LlmDirector implements LiveDirector {
   }
 
   /**
-   * Ask for the stage after the one that just started. Fire-and-forget: the
+   * Ask for the next stage using the current stage snapshot. Fire-and-forget: the
    * caller must never await this, and every failure path is a silent no-op
    * that leaves the heuristic in charge.
    */
@@ -148,6 +149,7 @@ export class LlmDirector implements LiveDirector {
     // leave an EMPTY slot -- never the previous stage's plan, which would be
     // silently wrong rather than merely absent.
     this.slot = null
+    this.selected = null
     this.inFlight?.abort()
 
     const runId = this.runId
@@ -180,9 +182,11 @@ export class LlmDirector implements LiveDirector {
         if (this.runId !== runId) return
         if (this.inFlight !== controller) return
 
+        if (controller.signal.aborted) return
+        if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return
         const plan = applyLlmPlan(raw, fallback, h)
         if (plan.mode === h.currentMode) return // belt and braces
-        this.slot = { runId, forShiftIndex, plan }
+        this.slot = { runId, forShiftIndex, plan, source: PLAN_SOURCE.Llm }
         this.log(`plan cached for shift=${forShiftIndex}`)
       } catch {
         // Timeout, abort, offline, no key, garbage JSON. All of these mean
@@ -194,17 +198,24 @@ export class LlmDirector implements LiveDirector {
     })()
   }
 
-  /**
-   * Synchronous and total. Reads the slot by identity rather than consuming
-   * it, so the fallbackPlan() path in ShiftDirectorScene legitimately gets the
-   * same plan a second time.
-   */
+  /** Abort outstanding work without invalidating a plan already selected. */
+  cancelPending(): void {
+    this.inFlight?.abort()
+    this.inFlight = null
+    this.epitaphInFlight?.abort()
+    this.epitaphInFlight = null
+  }
+
+  /** Seal the transition choice, preserving repeat reads of AI or fallback. */
   decide(m: RunMetrics, h: DirectorHistory): StagePlan {
+    // The transition is the deadline, even if the transport ignores abort.
+    this.inFlight?.abort()
+    this.inFlight = null
     // Always computed: it is cheap, and it is the source of the notes and the
     // stage length that applyLlmPlan() merges over.
     const base = this.fallback.decide(m, h)
     const want = h.shiftIndex + 1
-    const slot = this.slot
+    const slot = this.selected?.forShiftIndex === want ? this.selected : this.slot
 
     if (
       slot &&
@@ -212,12 +223,14 @@ export class LlmDirector implements LiveDirector {
       slot.forShiftIndex === want &&
       slot.plan.mode !== h.currentMode
     ) {
-      this.source = PLAN_SOURCE.Llm
+      this.selected = slot
+      this.source = slot.source
       return slot.plan
     }
 
     this.log(`decide wants shift=${want} -- heuristic`)
     this.source = PLAN_SOURCE.Heuristic
+    this.selected = { runId: this.runId, forShiftIndex: want, plan: base, source: this.source }
     return base
   }
 
@@ -238,7 +251,7 @@ export class LlmDirector implements LiveDirector {
         { kind: 'epitaph', runId, persona: this.persona, summary },
         controller.signal,
       )
-      if (this.runId !== runId) return null
+      if (this.runId !== runId || controller.signal.aborted) return null
       if (typeof raw !== 'object' || raw === null) return null
       return sanitiseLine((raw as Record<string, unknown>).epitaph, EPITAPH_MAX_LEN)
     } catch {

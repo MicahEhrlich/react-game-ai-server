@@ -7,6 +7,7 @@ import Fastify from 'fastify'
 import type { Connect } from 'vite'
 import type { ServerResponse } from 'node:http'
 import { buildServer } from '../src/server.ts'
+import { isAllowedOrigin } from '../src/config.ts'
 import { directorRoute } from '../src/routes/director.ts'
 import { memeThemeRoute } from '../src/routes/memeTheme.ts'
 import { registerScoreRoutes } from '../src/routes/scores.ts'
@@ -78,6 +79,17 @@ test('health route returns ok', async () => {
   assert.equal(res.statusCode, 200)
   assert.deepEqual(res.json(), { ok: true })
   await app.close()
+})
+
+test('CORS accepts Render-hosted frontend origins by default', () => {
+  assert.equal(
+    isAllowedOrigin('https://react-game-ai-server.onrender.com', ['http://localhost:5173', 'https://*.onrender.com']),
+    true,
+  )
+  assert.equal(
+    isAllowedOrigin('https://evil.example.com', ['http://localhost:5173', 'https://*.onrender.com']),
+    false,
+  )
 })
 
 test('score routes reject malformed payloads and rate-limit submissions', async () => {

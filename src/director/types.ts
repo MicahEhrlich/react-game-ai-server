@@ -55,7 +55,7 @@ export interface StagePlan {
 
 /**
  * The seam a future LLM-backed director implements. `decide` is synchronous
- * by design: it is called 3s ahead of the shift, and a stage plan must always
+ * by design: it is called at the shift, and a stage plan must always
  * be available on time. An async implementation belongs behind a cache that
  * falls back to the heuristic, not behind a change to this signature.
  */
@@ -108,7 +108,7 @@ export interface RunSummary {
  * Everything added here is OPTIONAL BEHAVIOUR, not an extension of the
  * contract above: `decide` is still the only thing the game requires, still
  * synchronous, and still guaranteed to return. These members exist so the
- * orchestrator can hand a live director time (`prime`, called a whole stage
+ * orchestrator can hand a live director time (`prime`, called eight seconds
  * ahead) and run boundaries (`beginRun`), neither of which `decide` can
  * express. A director that implements them must still be fully correct when
  * every one of them fails.
@@ -116,8 +116,10 @@ export interface RunSummary {
 export interface LiveDirector extends Director {
   /** Called at START_RUN. Must drop every scrap of the previous run. */
   beginRun(runId: string): void
+  /** Cancel outstanding requests on teardown without clearing a selected plan. */
+  cancelPending(): void
   /**
-   * Called just after a stage swap commits. Fire-and-forget; never awaited.
+   * Called with eight seconds remaining in the current stage; never awaited.
    *
    * `stages` is the run so far, oldest first. It is passed in rather than
    * read, because a director must not depend on the telemetry module: that
