@@ -6,6 +6,7 @@ import { setRedisRateLimitClient } from './rateLimit.ts'
 import { directorRoute } from './routes/director.ts'
 import { memeThemeRoute } from './routes/memeTheme.ts'
 import { registerScoreRoutes } from './routes/scores.ts'
+import { hijackWithHeaders } from './nodeHandler.ts'
 
 export async function buildServer(config = loadConfig()) {
   const pool = createPgPool(config.databaseUrl)
@@ -36,11 +37,11 @@ export async function buildServer(config = loadConfig()) {
   app.get('/health', async () => ({ ok: true }))
   registerScoreRoutes(app, config.scoresFile, pool)
   app.all('/api/director', (req, reply) => {
-    reply.hijack()
+    hijackWithHeaders(reply)
     void director(req.raw, reply.raw, req.body)
   })
   app.all('/api/meme-theme', (req, reply) => {
-    reply.hijack()
+    hijackWithHeaders(reply)
     void memeTheme(req.raw, reply.raw, req.body)
   })
 

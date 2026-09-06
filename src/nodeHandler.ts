@@ -1,6 +1,15 @@
 import { Readable } from 'node:stream'
 import type { IncomingHttpHeaders, IncomingMessage, ServerResponse } from 'node:http'
 import type { Connect } from 'vite'
+import type { FastifyReply } from 'fastify'
+
+/** Raw handlers bypass Fastify's send step, which normally writes hook headers. */
+export function hijackWithHeaders(reply: FastifyReply): void {
+  for (const [name, value] of Object.entries(reply.getHeaders())) {
+    if (value !== undefined) reply.raw.setHeader(name, value)
+  }
+  reply.hijack()
+}
 
 type ConnectHandler = (
   req: Connect.IncomingMessage,
