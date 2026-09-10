@@ -54,7 +54,7 @@ Use `render.yaml` as the blueprint. It creates:
 
 - `react-game-ai-server` web service
 - `react-game-ai-db` Postgres database
-- `react-game-ai-redis` Redis instance
+- `react-game-ai-redis` Render Key Value instance (Redis-compatible)
 
 Set `ANTHROPIC_API_KEY` and `CORS_ORIGINS` as Render secrets/env vars. Render
 waits for the repository's GitHub checks before deploying `main`. The build

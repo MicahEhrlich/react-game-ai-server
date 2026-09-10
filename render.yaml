@@ -22,15 +22,15 @@ services:
           property: connectionString
       - key: REDIS_URL
         fromService:
-          type: redis
+          type: keyvalue
           name: react-game-ai-redis
           property: connectionString
+
+  - type: keyvalue
+    name: react-game-ai-redis
+    ipAllowList: []
+    maxmemoryPolicy: allkeys-lru
 
 databases:
   - name: react-game-ai-db
     plan: starter
-
-redis:
-  - name: react-game-ai-redis
-    plan: starter
-    maxmemoryPolicy: allkeys-lru
