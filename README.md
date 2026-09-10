@@ -40,6 +40,8 @@ npm run db:migrate
 npm run dev
 ```
 
+Run the local lint, unit-test, and typecheck gate with `npm run ci:check`.
+
 The frontend proxies `/api` to `http://localhost:8787`.
 
 The game requests the next stage plan once the current stage has eight seconds remaining, using gameplay metrics collected so far. The three-second warning stays generic. At the transition, the game uses the available AI plan or its heuristic fallback without waiting; late responses cannot replace that choice. The final eight seconds are not included in the AI snapshot. Pausing freezes the stage countdown while an existing request may finish (subject to its 20-second wall-clock timeout).
@@ -54,4 +56,30 @@ Use `render.yaml` as the blueprint. It creates:
 - `react-game-ai-db` Postgres database
 - `react-game-ai-redis` Redis instance
 
-Set `ANTHROPIC_API_KEY` and `CORS_ORIGINS` as Render secrets/env vars. The build command runs `npm ci`, typecheck, and `npm run db:migrate`; the start command is `npm run start`.
+Set `ANTHROPIC_API_KEY` and `CORS_ORIGINS` as Render secrets/env vars. Render
+waits for the repository's GitHub checks before deploying `main`. The build
+command installs dependencies and typechecks, database migrations run as a
+pre-deploy command, and `/health` gates the new service instance before it
+receives traffic.
+
+## GitHub Actions
+
+Create a GitHub Environment named `production` under **Settings → Environments**.
+Configure these values in that environment:
+
+- Secret `RENDER_API_KEY`: create it under Render **Account Settings → API Keys**.
+- Variable `RENDER_SERVICE_ID`: the `srv-...` identifier for the backend service.
+- Variable `RENDER_SERVICE_URL`: the public HTTPS service origin without a trailing slash.
+
+The **Backend CI/CD** workflow runs lint, unit tests, typechecking, the database
+migration, and integration tests against disposable PostgreSQL and Redis services.
+Pull requests and pushes to `main` run the quality gate. Successful `main` pushes
+deploy through Render's **After CI Checks Pass** setting. A manual workflow run on
+`main` deploys the exact tested commit through the Render API and smoke-tests the
+production health and scores endpoints. Manual runs on other branches only run
+the quality gate.
+
+After the first CI/CD commit is merged, sync the Render Blueprint so
+`autoDeployTrigger: checksPass` and the pre-deploy migration command take effect.
+In GitHub's branch rules for `main`, require **Backend quality**, require branches
+to be up to date, restrict direct pushes, and block force pushes.

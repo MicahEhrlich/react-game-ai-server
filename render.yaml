@@ -4,7 +4,9 @@ services:
     runtime: node
     rootDir: .
     plan: starter
-    buildCommand: npm ci && npm run typecheck && npm run db:migrate
+    autoDeployTrigger: checksPass
+    buildCommand: npm ci && npm run typecheck
+    preDeployCommand: npm run db:migrate
     startCommand: npm run start
     healthCheckPath: /health
     envVars:

@@ -1,0 +1,231 @@
+name: Backend CI/CD
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: backend-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    name: Backend quality
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: react_game_ai_test
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_USER: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d react_game_ai_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      CORS_ORIGINS: https://ci.example
+      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/react_game_ai_test
+      NODE_ENV: test
+      REDIS_URL: redis://127.0.0.1:6379
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run backend checks
+        run: npm run ci:check
+
+      - name: Apply test database migration
+        run: npm run db:migrate
+
+      - name: Run PostgreSQL and Redis integration tests
+        run: npm run test:integration
+
+  deploy-production-manual:
+    name: Deploy backend production manually
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
+    needs: quality
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    environment: production
+    env:
+      RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+      RENDER_SERVICE_ID: ${{ vars.RENDER_SERVICE_ID }}
+      RENDER_SERVICE_URL: ${{ vars.RENDER_SERVICE_URL }}
+
+    steps:
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
+      - name: Deploy passing commit to Render
+        id: deploy
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import { appendFile } from 'node:fs/promises'
+
+          const required = ['RENDER_API_KEY', 'RENDER_SERVICE_ID', 'RENDER_SERVICE_URL']
+          for (const name of required) {
+            const value = process.env[name]
+            if (!value || value !== value.trim() || /[\r\n]/.test(value)) {
+              console.error(`::error::${name} is missing or contains surrounding whitespace/newlines.`)
+              process.exit(1)
+            }
+          }
+
+          const serviceUrl = new URL(process.env.RENDER_SERVICE_URL)
+          if (serviceUrl.protocol !== 'https:' || serviceUrl.username || serviceUrl.password) {
+            console.error('::error::RENDER_SERVICE_URL must be a public HTTPS origin without credentials.')
+            process.exit(1)
+          }
+
+          const apiUrl = `https://api.render.com/v1/services/${encodeURIComponent(process.env.RENDER_SERVICE_ID)}/deploys`
+          const response = await fetch(apiUrl, {
+            method: 'POST',
+            headers: {
+              Accept: 'application/json',
+              Authorization: `Bearer ${process.env.RENDER_API_KEY}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              clearCache: 'do_not_clear',
+              commitId: process.env.GITHUB_SHA,
+            }),
+            signal: AbortSignal.timeout(30_000),
+          })
+          const body = await response.json().catch(() => ({}))
+          const deploy = body.deploy ?? body
+          if (!response.ok || typeof deploy.id !== 'string') {
+            console.error(`::error::Render deployment creation failed with HTTP ${response.status}.`)
+            process.exit(1)
+          }
+
+          console.log(`Created Render deployment ${deploy.id} for commit ${process.env.GITHUB_SHA}.`)
+          await appendFile(process.env.GITHUB_OUTPUT, `deployment_id=${deploy.id}\n`)
+          NODE
+
+      - name: Wait for Render deployment
+        shell: bash
+        env:
+          DEPLOYMENT_ID: ${{ steps.deploy.outputs.deployment_id }}
+        run: |
+          node --input-type=module <<'NODE'
+          import { setTimeout as delay } from 'node:timers/promises'
+
+          const terminalFailures = new Set([
+            'build_failed',
+            'pre_deploy_failed',
+            'update_failed',
+            'canceled',
+            'cancelled',
+            'deactivated',
+          ])
+          const apiUrl = `https://api.render.com/v1/services/${encodeURIComponent(process.env.RENDER_SERVICE_ID)}/deploys/${encodeURIComponent(process.env.DEPLOYMENT_ID)}`
+
+          for (let attempt = 1; attempt <= 120; attempt += 1) {
+            try {
+              const response = await fetch(apiUrl, {
+                headers: {
+                  Accept: 'application/json',
+                  Authorization: `Bearer ${process.env.RENDER_API_KEY}`,
+                },
+                signal: AbortSignal.timeout(30_000),
+              })
+              const body = await response.json().catch(() => ({}))
+              const deploy = body.deploy ?? body
+              if (!response.ok) {
+                if (response.status === 429 || response.status >= 500) {
+                  console.warn(`Render deployment status returned transient HTTP ${response.status}; retrying.`)
+                  await delay(15_000)
+                  continue
+                }
+                console.error(`::error::Render deployment status failed with HTTP ${response.status}.`)
+                process.exit(1)
+              }
+              if (typeof deploy.status !== 'string') {
+                console.error('::error::Render deployment status response did not include a status.')
+                process.exit(1)
+              }
+
+              console.log(`Render deployment state: ${deploy.status}`)
+              if (deploy.status === 'live') process.exit(0)
+              if (terminalFailures.has(deploy.status)) {
+                console.error(`::error::Render deployment ended in ${deploy.status}.`)
+                process.exit(1)
+              }
+            } catch (error) {
+              console.warn(`Render deployment status request failed; retrying: ${error.message}`)
+            }
+
+            await delay(15_000)
+          }
+
+          console.error('::error::Render deployment did not become live within 30 minutes.')
+          process.exit(1)
+          NODE
+
+      - name: Smoke test production server
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import { setTimeout as delay } from 'node:timers/promises'
+
+          const origin = process.env.RENDER_SERVICE_URL.replace(/\/$/, '')
+
+          async function verify(path, validate) {
+            let lastError
+            for (let attempt = 1; attempt <= 12; attempt += 1) {
+              try {
+                const response = await fetch(`${origin}${path}`, {
+                  headers: { Accept: 'application/json' },
+                  signal: AbortSignal.timeout(15_000),
+                })
+                const body = await response.json()
+                if (response.ok && validate(body)) return
+                lastError = new Error(`HTTP ${response.status} returned an unexpected response`)
+              } catch (error) {
+                lastError = error
+              }
+              await delay(5_000)
+            }
+            console.error(`::error::Production smoke test failed for ${path}: ${lastError?.message ?? 'unknown error'}.`)
+            process.exit(1)
+          }
+
+          await verify('/health', (body) => body?.ok === true)
+          await verify('/api/scores?limit=1', (body) => Array.isArray(body?.entries))
+          console.log('Production health and score-store smoke tests passed.')
+          NODE
