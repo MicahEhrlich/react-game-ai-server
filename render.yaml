@@ -3,7 +3,7 @@ services:
     name: react-game-ai-server
     runtime: node
     rootDir: .
-    plan: starter
+    plan: 0.5c-512mb
     autoDeployTrigger: checksPass
     buildCommand: npm ci && npm run typecheck
     preDeployCommand: npm run db:migrate
@@ -33,4 +33,4 @@ services:
 
 databases:
   - name: react-game-ai-db
-    plan: starter
+    plan: 0.1c-256mb
