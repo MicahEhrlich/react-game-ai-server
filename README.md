@@ -15,7 +15,7 @@ The game treats `204` from AI routes as the normal fallback signal. Missing `ANT
 
 Adult meme mode remains client-catalog-only for v1. Requests with `adultMode: true` return `204` and do not call Anthropic.
 
-## Environment
+## Environment 
 
 - `ANTHROPIC_API_KEY`: server-only Anthropic key.
 - `DATABASE_URL`: Postgres connection string. If omitted, scores use local JSON storage.
