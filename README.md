@@ -35,7 +35,7 @@ ANTHROPIC_API_KEY=your-key-here
 The dev, start, and migration commands load `.env.local` when present. Existing environment variables take precedence. Restart the server after changing the file.
 
 ```sh
-npm install
+npm install 
 npm run db:migrate
 npm run dev
 ```
