@@ -57,10 +57,11 @@ Use `render.yaml` as the blueprint. It creates:
 - `react-game-ai-redis` Render Key Value instance (Redis-compatible)
 
 Set `ANTHROPIC_API_KEY` and `CORS_ORIGINS` as Render secrets/env vars. Render
-waits for the repository's GitHub checks before deploying `main`. The build
-command installs dependencies and typechecks, database migrations run as a
-pre-deploy command, and `/health` gates the new service instance before it
-receives traffic.
+sets `NODE_ENV=production` automatically at runtime. It waits for the
+repository's GitHub checks before deploying `main`. The build command installs
+production and development dependencies so TypeScript is available for the
+typecheck, database migrations run as a pre-deploy command, and `/health` gates
+the new service instance before it receives traffic.
 
 ## GitHub Actions
 

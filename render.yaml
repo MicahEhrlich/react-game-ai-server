@@ -5,13 +5,11 @@ services:
     rootDir: .
     plan: 0.5c-512mb
     autoDeployTrigger: checksPass
-    buildCommand: npm ci && npm run typecheck
+    buildCommand: npm ci --include=dev && npm run typecheck
     preDeployCommand: npm run db:migrate
     startCommand: npm run start
     healthCheckPath: /health
     envVars:
-      - key: NODE_ENV
-        value: production
       - key: ANTHROPIC_API_KEY
         sync: false
       - key: CORS_ORIGINS
