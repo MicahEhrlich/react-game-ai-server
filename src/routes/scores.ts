@@ -3,6 +3,7 @@ import { dirname } from 'node:path'
 import type { FastifyInstance } from 'fastify'
 import type { PgPool } from '../db.ts'
 import { allowRequestAsync, RATE_LIMITS } from '../rateLimit.ts'
+import { recordDependencyFailure } from '../observability.ts'
 
 export interface ScoreEntry {
   readonly name: string
@@ -100,26 +101,36 @@ export class PostgresScoreStore implements ScoreStore {
   }
 
   async top(limit: number): Promise<ScoreEntry[]> {
-    const result = await this.pool.query(
-      'select name, score, shifts, client_at, created_at from scores order by score desc, shifts desc, created_at asc limit $1',
-      [limit],
-    )
-    return result.rows.map(rowToEntry)
+    try {
+      const result = await this.pool.query(
+        'select name, score, shifts, client_at, created_at from scores order by score desc, shifts desc, created_at asc limit $1',
+        [limit],
+      )
+      return result.rows.map(rowToEntry)
+    } catch (error) {
+      recordDependencyFailure('postgres', 'scores_read', error)
+      throw error
+    }
   }
 
   async submit(entry: ScoreEntry): Promise<ScoreEntry[]> {
-    await this.pool.query('insert into scores (name, score, shifts, client_at) values ($1, $2, $3, $4)', [
-      entry.name,
-      entry.score,
-      entry.shifts,
-      entry.at,
-    ])
-    await this.pool.query(`
-      delete from scores where id in (
-        select id from scores order by score desc, shifts desc, created_at asc offset $1
-      )
-    `, [MAX_STORED])
-    return this.top(10)
+    try {
+      await this.pool.query('insert into scores (name, score, shifts, client_at) values ($1, $2, $3, $4)', [
+        entry.name,
+        entry.score,
+        entry.shifts,
+        entry.at,
+      ])
+      await this.pool.query(`
+        delete from scores where id in (
+          select id from scores order by score desc, shifts desc, created_at asc offset $1
+        )
+      `, [MAX_STORED])
+      return this.top(10)
+    } catch (error) {
+      recordDependencyFailure('postgres', 'scores_write', error)
+      throw error
+    }
   }
 }
 
@@ -134,7 +145,7 @@ export function registerScoreRoutes(app: FastifyInstance, scoresFile: string, po
   app.post('/api/scores', async (req, reply) => {
     const key = `scores:${ipFrom(req.headers, req.ip)}`
     try {
-      if (!(await allowRequestAsync(key, RATE_LIMITS.scoreSubmit))) {
+      if (!(await allowRequestAsync(key, RATE_LIMITS.scoreSubmit, 'scores'))) {
         reply.code(429)
         return { entries: await store.top(10), accepted: false }
       }

@@ -1,11 +1,13 @@
 import pg from 'pg'
 import { createClient } from 'redis'
+import { recordDependencyFailure } from './observability.ts'
 
 export type PgPool = pg.Pool
 export interface RedisClient {
   incr(key: string): Promise<number>
   pExpire(key: string, milliseconds: number): Promise<number | boolean>
   quit(): Promise<unknown>
+  ping(): Promise<string>
 }
 
 export function createPgPool(databaseUrl: string | undefined): PgPool | null {
@@ -24,7 +26,10 @@ export async function createRedis(redisUrl: string | undefined): Promise<RedisCl
       reconnectStrategy: false,
     },
   })
-  client.on('error', (err) => console.info(`[redis] ${err instanceof Error ? err.message : 'unknown error'}`))
+  client.on('error', (err) => {
+    console.info({ dependency: 'redis', event: 'client_error' }, err instanceof Error ? err.message : 'unknown error')
+    recordDependencyFailure('redis', 'client', err)
+  })
   let timer: NodeJS.Timeout | null = null
   try {
     await Promise.race([
@@ -35,7 +40,8 @@ export async function createRedis(redisUrl: string | undefined): Promise<RedisCl
     ])
     return client as RedisClient
   } catch (err) {
-    console.info(`[redis] falling back to in-memory rate limits: ${err instanceof Error ? err.message : 'unknown error'}`)
+    recordDependencyFailure('redis', 'connect', err)
+    console.info({ dependency: 'redis', event: 'memory_fallback' }, err instanceof Error ? err.message : 'unknown error')
     try {
       await client.destroy()
     } catch {

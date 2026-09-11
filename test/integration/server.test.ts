@@ -39,7 +39,17 @@ test('server works with PostgreSQL and Redis over HTTP', async (t) => {
 
   const health = await fetch(`${baseUrl}/health`)
   assert.equal(health.status, 200)
-  assert.deepEqual(await health.json(), { ok: true })
+  assert.deepEqual(await health.json(), { ok: true, release: 'development' })
+  assert.match(health.headers.get('x-request-id') ?? '', /^[0-9a-f-]{36}$/)
+
+  const ready = await fetch(`${baseUrl}/health/ready`)
+  assert.equal(ready.status, 200)
+  assert.deepEqual(await ready.json(), {
+    ready: true,
+    status: 'ok',
+    release: 'development',
+    dependencies: { postgres: 'ok', redis: 'ok' },
+  })
 
   const allowedCors = await fetch(`${baseUrl}/health`, {
     headers: { origin: allowedOrigin },

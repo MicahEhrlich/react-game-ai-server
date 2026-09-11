@@ -5,6 +5,7 @@ Standalone API backend for `react-game-ai`.
 ## Routes
 
 - `GET /health`
+- `GET /health/ready`
 - `POST /api/director`
 - `GET /api/meme-theme`
 - `POST /api/meme-theme`
@@ -23,6 +24,12 @@ Adult meme mode remains client-catalog-only for v1. Requests with `adultMode: tr
 - `CORS_ORIGINS`: comma-separated allowed frontend origins.
 - `PORT`: defaults to `8787`.
 - `SCORES_FILE`: local JSON fallback path, defaults to `./data/scores.json`.
+- `SENTRY_DSN`: server Sentry project DSN; observability is disabled when omitted.
+- `SENTRY_ENVIRONMENT`: Sentry environment name, normally `production` on Render.
+- `RENDER_GIT_COMMIT` / `GIT_COMMIT_SHA`: deployed release identifier.
+
+See [OPERATIONS.md](OPERATIONS.md) for dashboards, privacy controls, source-map
+setup, uptime monitors, and incident triage.
 
 ## Local Dev
 

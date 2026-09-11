@@ -225,7 +225,8 @@ jobs:
             process.exit(1)
           }
 
-          await verify('/health', (body) => body?.ok === true)
+          await verify('/health', (body) => body?.ok === true && body?.release === process.env.GITHUB_SHA)
+          await verify('/health/ready', (body) => body?.ready === true)
           await verify('/api/scores?limit=1', (body) => Array.isArray(body?.entries))
           console.log('Production health and score-store smoke tests passed.')
           NODE
