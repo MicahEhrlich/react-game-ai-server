@@ -41,6 +41,14 @@ type Handler = (
   next: Connect.NextFunction,
 ) => void
 
+export type DirectorOutcome = 'success' | 'upstream_timeout' | 'upstream_error' | 'refused' | 'invalid_response' | 'unsupported_mode'
+export type DirectorOutcomeObserver = (outcome: DirectorOutcome, kind: 'plan' | 'epitaph', durationMs: number) => void
+
+function failureOutcome(error: unknown): DirectorOutcome {
+  const text = error instanceof Error ? `${error.name} ${error.message}`.toLowerCase() : ''
+  return text.includes('timeout') || text.includes('abort') ? 'upstream_timeout' : 'upstream_error'
+}
+
 function readBody(req: Connect.IncomingMessage): Promise<string> {
   return new Promise((resolve, reject) => {
     let size = 0
@@ -65,7 +73,7 @@ function isDirectorRequest(v: unknown): v is DirectorRequest {
   return kind === 'plan' || kind === 'epitaph'
 }
 
-export function makeDirectorHandler(apiKey: string | undefined): Handler {
+export function makeDirectorHandler(apiKey: string | undefined, observe: DirectorOutcomeObserver = () => {}): Handler {
   let warned = false
 
   return (req, res, next) => {
@@ -103,6 +111,7 @@ export function makeDirectorHandler(apiKey: string | undefined): Handler {
       }
 
       if (!isDirectorRequest(payload)) {
+        observe('unsupported_mode', 'plan', 0)
         res.statusCode = 400
         res.end()
         return
@@ -152,6 +161,7 @@ export function makeDirectorHandler(apiKey: string | undefined): Handler {
 
         // A safety refusal is a legitimate "nothing to say".
         if (message.stop_reason === 'refusal') {
+          observe('refused', payload.kind, Date.now() - started)
           quiet()
           return
         }
@@ -161,8 +171,14 @@ export function makeDirectorHandler(apiKey: string | undefined): Handler {
           .map((b) => b.text)
           .join('')
 
-        // Forwarded as-is. Validating it is llmPlan.ts's job, in the browser,
-        // where it is needed whether or not this server was involved.
+        try {
+          JSON.parse(text)
+        } catch {
+          observe('invalid_response', payload.kind, Date.now() - started)
+          quiet()
+          return
+        }
+        observe('success', payload.kind, Date.now() - started)
         res.statusCode = 200
         res.setHeader('content-type', 'application/json')
         res.end(text)
@@ -172,6 +188,7 @@ export function makeDirectorHandler(apiKey: string | undefined): Handler {
           `[director] ${payload.kind} failed after ${Date.now() - started}ms: ` +
             (err instanceof Error ? err.message : 'unknown error'),
         )
+        observe(failureOutcome(err), payload.kind, Date.now() - started)
         quiet()
       }
     })()

@@ -77,7 +77,17 @@ test('health route returns ok', async () => {
   })
   const res = await app.inject({ method: 'GET', url: '/health' })
   assert.equal(res.statusCode, 200)
-  assert.deepEqual(res.json(), { ok: true })
+  assert.deepEqual(res.json(), { ok: true, release: 'development' })
+  assert.match(String(res.headers['x-request-id'] ?? ''), /^[0-9a-f-]{36}$/)
+
+  const ready = await app.inject({ method: 'GET', url: '/health/ready' })
+  assert.equal(ready.statusCode, 200)
+  assert.deepEqual(ready.json(), {
+    ready: true,
+    status: 'degraded',
+    release: 'development',
+    dependencies: { postgres: 'ok', redis: 'degraded' },
+  })
   await app.close()
 })
 
@@ -90,6 +100,44 @@ test('CORS accepts Render-hosted frontend origins by default', () => {
     isAllowedOrigin('https://evil.example.com', ['http://localhost:5173', 'https://*.onrender.com']),
     false,
   )
+})
+
+test('readiness marks PostgreSQL unavailable and Redis degradation non-fatal', async () => {
+  const config = {
+    host: '127.0.0.1', port: 0, allowedOrigins: [], scoresFile: 'unused.json',
+    nodeEnv: 'test', databaseUrl: 'postgres://configured', redisUrl: 'redis://configured', release: 'test-release',
+  }
+  const failedPool = {
+    query: async () => { throw new Error('private database detail') },
+    end: async () => {},
+  }
+  const failedRedis = {
+    incr: async () => 1,
+    pExpire: async () => 1,
+    ping: async () => { throw new Error('private redis detail') },
+    quit: async () => {},
+  }
+  const app = await buildServer(config, {
+    pool: failedPool as never,
+    redis: failedRedis,
+  })
+  const unavailable = await app.inject({ method: 'GET', url: '/health/ready' })
+  assert.equal(unavailable.statusCode, 503)
+  assert.deepEqual(unavailable.json(), {
+    ready: false,
+    status: 'unavailable',
+    release: 'test-release',
+    dependencies: { postgres: 'unavailable', redis: 'degraded' },
+  })
+  assert.equal(unavailable.body.includes('private'), false)
+  await app.close()
+
+  const healthyPool = { query: async () => ({ rows: [] }), end: async () => {} }
+  const degraded = await buildServer(config, { pool: healthyPool as never, redis: failedRedis })
+  const response = await degraded.inject({ method: 'GET', url: '/health/ready' })
+  assert.equal(response.statusCode, 200)
+  assert.equal(response.json().status, 'degraded')
+  await degraded.close()
 })
 
 test('score routes reject malformed payloads and rate-limit submissions', async () => {

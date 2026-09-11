@@ -652,7 +652,16 @@ type Handler = (
   next: Connect.NextFunction,
 ) => void
 
-export function makeMemeThemeHandler(apiKey: string | undefined): Handler {
+export type MemeThemeOutcome = 'success' | 'upstream_timeout' | 'upstream_error' | 'refused' | 'invalid_response'
+export type MemeThemeOutcomeObserver = (outcome: MemeThemeOutcome, durationMs: number) => void
+
+function failureOutcome(error: unknown): MemeThemeOutcome {
+  if (error instanceof SyntaxError) return 'invalid_response'
+  const text = error instanceof Error ? `${error.name} ${error.message}`.toLowerCase() : ''
+  return text.includes('timeout') || text.includes('abort') ? 'upstream_timeout' : 'upstream_error'
+}
+
+export function makeMemeThemeHandler(apiKey: string | undefined, observe: MemeThemeOutcomeObserver = () => {}): Handler {
   let warned = false
 
   return (req, res, next) => {
@@ -711,11 +720,13 @@ export function makeMemeThemeHandler(apiKey: string | undefined): Handler {
         )
 
         if (candidateMessage.stop_reason === 'refusal') {
+          observe('refused', Date.now() - started)
           quiet()
           return
         }
         const candidate = chooseBestCandidate(JSON.parse(extractText(candidateMessage)) as unknown)
         if (!candidate) {
+          observe('invalid_response', Date.now() - started)
           quiet()
           return
         }
@@ -740,11 +751,13 @@ export function makeMemeThemeHandler(apiKey: string | undefined): Handler {
         )
 
         if (reviewMessage.stop_reason === 'refusal') {
+          observe('refused', Date.now() - started)
           quiet()
           return
         }
         const review = normaliseMemeReview(JSON.parse(extractText(reviewMessage)) as unknown)
         if (!review || review.rating === 'reject') {
+          observe(review ? 'refused' : 'invalid_response', Date.now() - started)
           quiet()
           return
         }
@@ -775,6 +788,7 @@ export function makeMemeThemeHandler(apiKey: string | undefined): Handler {
         )
 
         if (message.stop_reason === 'refusal') {
+          observe('refused', Date.now() - started)
           quiet()
           return
         }
@@ -782,10 +796,12 @@ export function makeMemeThemeHandler(apiKey: string | undefined): Handler {
         const parsed = JSON.parse(extractText(message)) as unknown
         const theme = normaliseMemeTheme(parsed, date, MEME_THEME_SOURCE.Live)
         if (!theme) {
+          observe('invalid_response', Date.now() - started)
           quiet()
           return
         }
 
+        observe('success', Date.now() - started)
         res.statusCode = 200
         res.setHeader('content-type', 'application/json')
         res.end(JSON.stringify(theme))
@@ -794,6 +810,7 @@ export function makeMemeThemeHandler(apiKey: string | undefined): Handler {
           `[meme-theme] failed after ${Date.now() - started}ms: ` +
             (err instanceof Error ? err.message : 'unknown error'),
         )
+        observe(failureOutcome(err), Date.now() - started)
         quiet()
       }
     })()

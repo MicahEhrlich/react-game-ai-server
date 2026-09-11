@@ -7,6 +7,7 @@ export interface ServerConfig {
   readonly databaseUrl?: string
   readonly redisUrl?: string
   readonly nodeEnv: string
+  readonly release?: string
 }
 
 export function isAllowedOrigin(origin: string | undefined, allowedOrigins: readonly string[]): boolean {
@@ -44,5 +45,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
     databaseUrl: env.DATABASE_URL,
     redisUrl: env.REDIS_URL,
     nodeEnv: env.NODE_ENV ?? 'development',
+    release: env.RENDER_GIT_COMMIT?.trim() || env.GIT_COMMIT_SHA?.trim() || 'development',
   }
 }

@@ -1,5 +1,6 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { RedisClient } from './db.ts'
+import { recordDependencyFailure, recordRateLimit } from './observability.ts'
 
 export interface RateLimitRule {
   readonly windowMs: number
@@ -47,12 +48,24 @@ export function allowRequest(key: string, rule: RateLimitRule, now = Date.now())
   return true
 }
 
-export async function allowRequestAsync(key: string, rule: RateLimitRule): Promise<boolean> {
-  if (!redis) return allowRequest(key, rule)
+export async function allowRequestAsync(key: string, rule: RateLimitRule, route = 'unknown'): Promise<boolean> {
+  if (!redis) {
+    const allowed = allowRequest(key, rule)
+    recordRateLimit(route, 'memory', allowed ? 'allowed' : 'limited')
+    return allowed
+  }
   const redisKey = `rl:${key}`
-  const count = await redis.incr(redisKey)
-  if (count === 1) await redis.pExpire(redisKey, rule.windowMs)
-  return count <= rule.max
+  try {
+    const count = await redis.incr(redisKey)
+    if (count === 1) await redis.pExpire(redisKey, rule.windowMs)
+    const allowed = count <= rule.max
+    recordRateLimit(route, 'redis', allowed ? 'allowed' : 'limited')
+    return allowed
+  } catch (error) {
+    recordRateLimit(route, 'redis', 'error')
+    recordDependencyFailure('redis', 'rate_limit', error)
+    throw error
+  }
 }
 
 export async function rateLimit(
@@ -65,7 +78,7 @@ export async function rateLimit(
   const session = typeof req.headers['x-run-id'] === 'string' ? req.headers['x-run-id'] : ''
   const key = `${route}:${ipFrom(req)}:${session}`
   try {
-    if (await allowRequestAsync(key, rule)) return true
+    if (await allowRequestAsync(key, rule, route)) return true
   } catch (err) {
     console.info(`[rate-limit] ${err instanceof Error ? err.message : 'unknown error'}`)
     if (!failClosed) return true
