@@ -85,6 +85,7 @@ export const MUSIC_SCALE = {
   Major: 'major',
   Pentatonic: 'pentatonic',
   Chromatic: 'chromatic',
+  PhrygianDominant: 'phrygianDominant',
 } as const
 export type MusicScale = (typeof MUSIC_SCALE)[keyof typeof MUSIC_SCALE]
 export type MusicWave = 'sine' | 'square' | 'sawtooth' | 'triangle'
@@ -272,6 +273,22 @@ const MUSIC = {
     drumKit: 'noir',
     swing: 0.22,
     intensity: 0.42,
+  },
+  HavaNagila: {
+    style: 'hava nagila chiptune',
+    bpm: 126,
+    scale: MUSIC_SCALE.PhrygianDominant,
+    bassPattern: [0, -1, 0, -1, 4, -1, 3, -1],
+    leadPattern: [0, 0, 1, 2, 2, 1, 0, -1, 0, 0, 1, 2, 2, 1, 0, -1],
+    padPattern: [0, -1, -1, -1, 3, -1, -1, -1],
+    chordPattern: [0, -1, 3, -1, 4, -1, 3, -1],
+    drumPattern: [1, 3, 2, 3, 1, 3, 2, 3, 1, 3, 2, 3, 1, 3, 2, 4],
+    bassWave: 'triangle',
+    leadWave: 'square',
+    padWave: 'sine',
+    drumKit: 'dance',
+    swing: 0.1,
+    intensity: 0.58,
   },
   KirkMarch: {
     style: 'anthem lament',
